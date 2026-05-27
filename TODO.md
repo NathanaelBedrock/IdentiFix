@@ -11,6 +11,7 @@
 - [ ] Add LinkedIn to checked sites
 - [ ] Fix maigret collector
 - [ ] Fix naminter collector
+- [ ] Create pyproject.toml
 
 ## Completed
 

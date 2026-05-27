@@ -126,6 +126,7 @@ function app() {
       const hits = [];
       for (const result of (this.current.results || [])) {
         for (const hit of (result.profile_hits || [])) {
+          if (!hit.metadata?.confirmed_by_multiple) continue;
           const key = hit.platform + hit.url;
           if (!seen.has(key)) { seen.add(key); hits.push(hit); }
         }

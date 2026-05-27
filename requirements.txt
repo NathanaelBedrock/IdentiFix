@@ -1,0 +1,39 @@
+fastapi>=0.111.0
+uvicorn[standard]>=0.30.0
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+httpx>=0.27.0
+python-multipart>=0.0.9
+aiofiles>=23.2.1
+sse-starlette>=2.1.0
+
+# OSINT libraries (Python imports)
+sherlock-project>=0.15.0
+# maigret — conflicts with networkx/socid-extractor pins, install separately:
+# pip install maigret --no-deps aiodns aiohttp_socks alive-progress
+holehe>=1.7.0
+socialscan>=1.3.0
+socid-extractor>=0.0.28
+ExifRead>=3.0.0
+h8mail>=2.5.0
+
+# OSINT CLI tools (subprocess wrappers, pip-installable)
+naminter>=1.0.7
+linkook>=1.1.2
+sharetrace>=1.0.0
+
+# OSINT CLI tools requiring manual install (see README):
+# blackbird  — git clone https://github.com/p1ngul1n0/blackbird.git
+# gitfive    — clone + python -m build + pipx install wheel
+# sociopath  — go install github.com/codeGROOVE-dev/sociopath/cmd/sociopath@latest
+
+# Social media API clients
+tweepy>=4.14.0
+praw>=7.7.1
+
+# AI enrichment
+openai>=1.35.0
+
+# Utilities
+networkx>=3.3
+Pillow>=10.3.0

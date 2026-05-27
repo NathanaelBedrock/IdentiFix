@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IdentiFix — OSINT Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  <script src="https://unpkg.com/vis-network@9.1.9/dist/vis-network.min.js"></script>
+  <link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.9/dist/dist/vis-network.min.css" />
+  <style>
+    [x-cloak] { display: none !important; }
+    #graph-container { height: 420px; background: #0f172a; border-radius: 0.5rem; }
+    .badge-pending    { background:#334155; color:#94a3b8 }
+    .badge-running    { background:#1e3a5f; color:#60a5fa }
+    .badge-success,
+    .badge-completed  { background:#14532d; color:#4ade80 }
+    .badge-failed     { background:#450a0a; color:#f87171 }
+    .badge-skipped    { background:#292524; color:#78716c }
+    .badge-cancelled  { background:#292524; color:#78716c }
+    .collector-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+    ::-webkit-scrollbar { width:6px } ::-webkit-scrollbar-thumb { background:#334155; border-radius:3px }
+  </style>
+  <script>
+    tailwind.config = { darkMode: 'class' }
+  </script>
+</head>
+<body class="bg-slate-950 text-slate-200 min-h-screen font-sans">
+
+<div x-data="app()" x-init="init()" x-cloak>
+  <!-- Header -->
+  <header class="border-b border-slate-800 px-6 py-4 flex items-center gap-4">
+    <div class="flex items-center gap-2">
+      <svg class="w-7 h-7 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+      </svg>
+      <span class="text-xl font-bold text-white tracking-tight">Identi<span class="text-sky-400">Fix</span></span>
+    </div>
+    <span class="text-slate-500 text-sm">OSINT Investigation Platform</span>
+    <div class="ml-auto flex items-center gap-3">
+      <button @click="showCollectors=true"
+        class="text-slate-400 hover:text-slate-200 text-sm px-3 py-1.5 rounded border border-slate-700 hover:border-slate-500 transition">
+        Tools Status
+      </button>
+      <button @click="showNewInv=true"
+        class="bg-sky-500 hover:bg-sky-400 text-white text-sm font-medium px-4 py-2 rounded-lg transition">
+        + New Investigation
+      </button>
+    </div>
+  </header>
+
+  <div class="flex h-[calc(100vh-65px)]">
+    <!-- Sidebar -->
+    <aside class="w-72 border-r border-slate-800 overflow-y-auto flex-shrink-0">
+      <div class="p-4 text-xs text-slate-500 uppercase tracking-widest font-semibold">Investigations</div>
+      <template x-if="investigations.length === 0">
+        <div class="px-4 py-8 text-center text-slate-600 text-sm">No investigations yet.<br>Start one above.</div>
+      </template>
+      <template x-for="inv in investigations" :key="inv.id">
+        <button @click="selectInvestigation(inv.id)"
+          :class="['w-full text-left px-4 py-3 border-b border-slate-800 hover:bg-slate-800/50 transition',
+                   selectedId === inv.id ? 'bg-slate-800' : '']">
+          <div class="flex items-center justify-between">
+            <span class="text-sm font-medium text-slate-200 truncate max-w-[170px]" x-text="inv.target"></span>
+            <span :class="'badge-' + inv.status" class="text-xs px-2 py-0.5 rounded-full font-medium" x-text="inv.status"></span>
+          </div>
+          <div class="mt-1 flex gap-3 text-xs text-slate-500">
+            <span x-text="inv.summary.profile_hits + ' hits'"></span>
+            <span x-text="inv.summary.email_breaches + ' breaches'"></span>
+          </div>
+        </button>
+      </template>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="flex-1 overflow-y-auto p-6">
+      <template x-if="!current">
+        <div class="h-full flex items-center justify-center text-slate-600">
+          <div class="text-center">
+            <svg class="w-16 h-16 mx-auto mb-4 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+            </svg>
+            <p>Select an investigation or create a new one</p>
+          </div>
+        </div>
+      </template>
+
+      <template x-if="current">
+        <div>
+          <!-- Header -->
+          <div class="flex items-start justify-between mb-6">
+            <div>
+              <h2 class="text-2xl font-bold text-white" x-text="current.target?.username || current.target?.email || 'Investigation'"></h2>
+              <p class="text-slate-400 text-sm mt-1" x-text="formatTarget(current.target)"></p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span :class="'badge-' + current.status"
+                class="text-sm px-3 py-1 rounded-full font-medium capitalize" x-text="current.status"></span>
+              <a :href="'/api/investigations/' + current.id + '/report'" target="_blank"
+                class="text-slate-400 hover:text-sky-400 text-sm border border-slate-700 px-3 py-1 rounded-lg transition">
+                HTML Report
+              </a>
+              <button @click="deleteInvestigation(current.id)"
+                class="text-slate-600 hover:text-red-400 text-sm border border-slate-800 hover:border-red-900 px-3 py-1 rounded-lg transition">
+                Delete
+              </button>
+            </div>
+          </div>
+
+          <!-- Stats -->
+          <div class="grid grid-cols-4 gap-4 mb-6">
+            <template x-for="[label, value, color] in statCards()" :key="label">
+              <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+                <div class="text-2xl font-bold" :class="color" x-text="value"></div>
+                <div class="text-slate-500 text-xs mt-1" x-text="label"></div>
+              </div>
+            </template>
+          </div>
+
+          <!-- Progress (while running) -->
+          <template x-if="current.status === 'running'">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 mb-6">
+              <div class="text-sm font-medium text-slate-300 mb-3">Collectors running…</div>
+              <div class="grid grid-cols-4 gap-2">
+                <template x-for="[name, status] in Object.entries(current.collectors || {})" :key="name">
+                  <div class="flex items-center gap-1.5 text-xs text-slate-400">
+                    <span :class="{
+                      'bg-slate-600': status==='pending',
+                      'bg-blue-500 animate-pulse': status==='running',
+                      'bg-green-500': status==='success',
+                      'bg-red-500': status==='failed',
+                      'bg-slate-700': status==='skipped'
+                    }" class="collector-dot"></span>
+                    <span x-text="name"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- Tabs -->
+          <div class="border-b border-slate-800 mb-4 flex gap-1">
+            <template x-for="tab in ['profiles', 'email', 'breaches', 'graph', 'ai_report', 'raw']" :key="tab">
+              <button @click="activeTab=tab"
+                :class="['px-4 py-2 text-sm rounded-t transition',
+                         activeTab===tab ? 'text-sky-400 border-b-2 border-sky-400' : 'text-slate-500 hover:text-slate-300']"
+                x-text="tabLabel(tab)">
+              </button>
+            </template>
+          </div>
+
+          <!-- Tab: Profiles -->
+          <template x-if="activeTab==='profiles'">
+            <div>
+              <template x-if="profileHits().length === 0">
+                <p class="text-slate-600 text-sm py-8 text-center">No profile hits yet.</p>
+              </template>
+              <div class="grid grid-cols-2 gap-3">
+                <template x-for="hit in profileHits()" :key="hit.platform + hit.url">
+                  <a :href="hit.url" target="_blank"
+                    class="bg-slate-900 border border-slate-800 hover:border-sky-800 rounded-xl p-4 flex items-center gap-3 transition group">
+                    <div class="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-sky-400 font-bold text-sm flex-shrink-0"
+                      x-text="hit.platform.slice(0,2).toUpperCase()"></div>
+                    <div class="min-w-0">
+                      <div class="font-medium text-slate-200 text-sm" x-text="hit.platform"></div>
+                      <div class="text-slate-500 text-xs truncate" x-text="hit.url"></div>
+                    </div>
+                    <template x-if="hit.metadata?.confirmed_by_multiple">
+                      <span class="ml-auto text-xs text-green-400 bg-green-900/30 px-2 py-0.5 rounded-full">Confirmed</span>
+                    </template>
+                  </a>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- Tab: Email Registrations -->
+          <template x-if="activeTab==='email'">
+            <div>
+              <template x-if="emailRegistrations().length === 0">
+                <p class="text-slate-600 text-sm py-8 text-center">No email registrations found.</p>
+              </template>
+              <div class="grid grid-cols-3 gap-3">
+                <template x-for="reg in emailRegistrations()" :key="reg.site">
+                  <a :href="reg.url || '#'" target="_blank"
+                    class="bg-slate-900 border border-slate-800 hover:border-purple-800 rounded-xl p-3 flex items-center gap-2 transition">
+                    <div class="w-8 h-8 rounded-lg bg-slate-800 flex items-center justify-center text-purple-400 font-bold text-xs"
+                      x-text="reg.site.slice(0,2).toUpperCase()"></div>
+                    <span class="text-sm text-slate-300" x-text="reg.site"></span>
+                  </a>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- Tab: Breaches -->
+          <template x-if="activeTab==='breaches'">
+            <div>
+              <template x-if="emailBreaches().length === 0">
+                <p class="text-slate-600 text-sm py-8 text-center">No data breaches found.</p>
+              </template>
+              <div class="space-y-3">
+                <template x-for="breach in emailBreaches()" :key="breach.source">
+                  <div class="bg-slate-900 border border-red-900/30 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                      <span class="font-semibold text-red-400" x-text="breach.source"></span>
+                      <span class="text-slate-500 text-xs" x-text="breach.date || 'Date unknown'"></span>
+                    </div>
+                    <div class="flex gap-4 text-xs text-slate-400">
+                      <span x-show="breach.records"><span class="text-white" x-text="breach.records?.toLocaleString()"></span> records</span>
+                      <span x-show="breach.fields?.length">Fields: <span class="text-orange-400" x-text="breach.fields?.join(', ')"></span></span>
+                    </div>
+                    <template x-if="breach.description">
+                      <p class="text-slate-500 text-xs mt-2" x-text="breach.description"></p>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </div>
+          </template>
+
+          <!-- Tab: Graph -->
+          <template x-if="activeTab==='graph'">
+            <div>
+              <template x-if="!current.graph || current.graph.nodes.length === 0">
+                <p class="text-slate-600 text-sm py-8 text-center">Graph will appear once investigation completes.</p>
+              </template>
+              <div id="graph-container" x-show="current.graph?.nodes?.length > 0"
+                x-effect="renderGraph(current.graph)"></div>
+              <div class="mt-3 flex gap-4 text-xs text-slate-500 justify-center">
+                <span><span class="inline-block w-2 h-2 rounded-full bg-sky-400 mr-1"></span>Person</span>
+                <span><span class="inline-block w-2 h-2 rounded-full bg-purple-400 mr-1"></span>Username</span>
+                <span><span class="inline-block w-2 h-2 rounded-full bg-green-400 mr-1"></span>Profile</span>
+                <span><span class="inline-block w-2 h-2 rounded-full bg-yellow-400 mr-1"></span>Email</span>
+                <span><span class="inline-block w-2 h-2 rounded-full bg-red-400 mr-1"></span>Breach</span>
+              </div>
+            </div>
+          </template>
+
+          <!-- Tab: AI Report -->
+          <template x-if="activeTab==='ai_report'">
+            <div>
+              <template x-if="!current.ai_report">
+                <p class="text-slate-600 text-sm py-8 text-center">
+                  AI report will appear after investigation completes (requires OpenAI API key).
+                </p>
+              </template>
+              <template x-if="current.ai_report">
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-6 text-slate-300 text-sm leading-relaxed whitespace-pre-wrap"
+                  x-text="current.ai_report"></div>
+              </template>
+            </div>
+          </template>
+
+          <!-- Tab: Raw Data -->
+          <template x-if="activeTab==='raw'">
+            <div class="space-y-3">
+              <template x-for="result in (current.results || [])" :key="result.collector">
+                <details class="bg-slate-900 border border-slate-800 rounded-xl">
+                  <summary class="cursor-pointer px-4 py-3 flex items-center gap-2 select-none">
+                    <span :class="'badge-' + result.status"
+                      class="text-xs px-2 py-0.5 rounded-full" x-text="result.status"></span>
+                    <span class="text-sm font-medium text-slate-300" x-text="result.collector"></span>
+                    <span class="ml-auto text-xs text-slate-500"
+                      x-text="(result.duration_seconds || 0) + 's'"></span>
+                  </summary>
+                  <div class="px-4 pb-4">
+                    <pre class="text-xs text-slate-400 overflow-x-auto bg-slate-950 rounded-lg p-3 max-h-64 overflow-y-auto"
+                      x-text="JSON.stringify(result, null, 2)"></pre>
+                  </div>
+                </details>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
+    </main>
+  </div>
+
+  <!-- New Investigation Modal -->
+  <div x-show="showNewInv" x-transition
+    class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div @click.outside="showNewInv=false"
+      class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-lg shadow-2xl">
+      <h3 class="text-lg font-semibold text-white mb-1">New Investigation</h3>
+      <p class="text-slate-400 text-sm mb-5">Fill at least one field to start.</p>
+      <div class="space-y-3">
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">Username</label>
+          <input x-model="form.username" placeholder="johndoe"
+            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500" />
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 mb-1 block">Email</label>
+          <input x-model="form.email" placeholder="user@example.com"
+            class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500" />
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">Discord ID</label>
+            <input x-model="form.discord_id" placeholder="123456789"
+              class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">Twitter/X</label>
+            <input x-model="form.twitter_handle" placeholder="handle"
+              class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500" />
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 mb-1 block">Reddit</label>
+            <input x-model="form.reddit_username" placeholder="u/name"
+              class="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500" />
+          </div>
+        </div>
+      </div>
+      <div class="flex gap-3 mt-6">
+        <button @click="showNewInv=false"
+          class="flex-1 border border-slate-700 text-slate-400 py-2 rounded-lg text-sm hover:border-slate-500 transition">Cancel</button>
+        <button @click="submitInvestigation()"
+          :disabled="submitting"
+          class="flex-1 bg-sky-500 hover:bg-sky-400 disabled:opacity-50 text-white py-2 rounded-lg text-sm font-medium transition">
+          <span x-text="submitting ? 'Starting…' : 'Start Investigation'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Collectors Status Modal -->
+  <div x-show="showCollectors" x-transition
+    class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div @click.outside="showCollectors=false"
+      class="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-xl shadow-2xl max-h-[80vh] overflow-y-auto">
+      <h3 class="text-lg font-semibold text-white mb-4">Collector Status</h3>
+      <div class="space-y-2">
+        <template x-for="c in collectors" :key="c.name">
+          <div class="flex items-center justify-between py-2 border-b border-slate-800">
+            <div>
+              <span class="text-sm text-slate-200 font-medium" x-text="c.name"></span>
+              <div class="text-xs text-slate-500 mt-0.5">
+                <span x-show="c.requires_username">username</span>
+                <span x-show="c.requires_email"> · email</span>
+                <span x-show="c.requires_image"> · image</span>
+              </div>
+            </div>
+            <span :class="c.available ? 'bg-green-900/30 text-green-400' : 'bg-red-900/30 text-red-400'"
+              class="text-xs px-2.5 py-1 rounded-full font-medium"
+              x-text="c.available ? 'Available' : 'Not installed'"></span>
+          </div>
+        </template>
+      </div>
+      <button @click="showCollectors=false"
+        class="mt-4 w-full border border-slate-700 text-slate-400 py-2 rounded-lg text-sm hover:border-slate-500 transition">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>

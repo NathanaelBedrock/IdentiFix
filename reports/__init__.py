@@ -1,0 +1,1 @@
+from reports.generator import generate_html_report

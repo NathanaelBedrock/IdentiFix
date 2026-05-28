@@ -144,6 +144,18 @@ function app() {
       }
     },
 
+    areAllEmailCardsExpanded() {
+      const regs = this.emailRegistrations();
+      return regs.length > 0 && regs.every(r => this.openCards['email:' + r.site]);
+    },
+
+    toggleAllEmailCards() {
+      const expand = !this.areAllEmailCardsExpanded();
+      for (const reg of this.emailRegistrations()) {
+        this.openCards['email:' + reg.site] = expand;
+      }
+    },
+
     profileHits() {
       if (!this.current) return [];
       const seen = new Set();

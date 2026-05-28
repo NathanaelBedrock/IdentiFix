@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     h8mail_haveibeenpwned_key: str = ""
     h8mail_snusbase_key: str = ""
+    h8mail_leaklookup_key: str = ""
 
     host: str = "0.0.0.0"
     port: int = 8000

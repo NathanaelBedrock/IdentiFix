@@ -1,5 +1,3 @@
-from __future__ import annotations
-import asyncio
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -13,7 +11,7 @@ from workers.manager import store, event_stream
 from reports.generator import generate_html_report
 from collectors import ALL_COLLECTORS
 
-app = FastAPI(title="IdentiFix", version="1.0.0")
+app = FastAPI(title="IdentiFix", version="0.0.1")
 
 # ── Static files ─────────────────────────────────────────────────────────────
 static_dir = Path(__file__).parent / "static"

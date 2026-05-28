@@ -157,20 +157,92 @@
               <template x-if="profileHits().length === 0">
                 <p class="text-slate-600 text-sm py-8 text-center">No profile hits yet.</p>
               </template>
-              <div class="grid grid-cols-2 gap-3">
+              <div class="flex justify-end mb-2" x-show="profileHits().length > 0">
+                <button @click="toggleAllCards()"
+                  class="text-xs text-slate-400 hover:text-sky-400 transition px-3 py-1 rounded-lg border border-slate-700 hover:border-sky-700"
+                  x-text="areAllCardsExpanded() ? 'Collapse all' : 'Expand all'"></button>
+              </div>
+              <div class="grid grid-cols-2 gap-3 items-start">
                 <template x-for="hit in profileHits()" :key="hit.platform + hit.url">
-                  <a :href="hit.url" target="_blank"
-                    class="bg-slate-900 border border-slate-800 hover:border-sky-800 rounded-xl p-4 flex items-center gap-3 transition group">
-                    <div class="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-sky-400 font-bold text-sm flex-shrink-0"
-                      x-text="hit.platform.slice(0,2).toUpperCase()"></div>
-                    <div class="min-w-0">
-                      <div class="font-medium text-slate-200 text-sm" x-text="hit.platform"></div>
-                      <div class="text-slate-500 text-xs truncate" x-text="hit.url"></div>
+                  <div class="bg-slate-900 border border-slate-800 hover:border-sky-800 rounded-xl transition"
+                    :class="openCards[hit.platform + hit.url] ? 'border-sky-800' : ''">
+                    <!-- Card header — click to expand -->
+                    <div class="p-4 flex items-center gap-3 cursor-pointer select-none"
+                      @click="toggleCard(hit.platform + hit.url)">
+                      <div class="w-9 h-9 rounded-lg bg-slate-800 flex items-center justify-center text-sky-400 font-bold text-sm flex-shrink-0"
+                        x-text="hit.platform.slice(0,2).toUpperCase()"></div>
+                      <div class="min-w-0 flex-1">
+                        <div class="font-medium text-slate-200 text-sm" x-text="hit.platform"></div>
+                        <div x-show="hitFullName(hit)" class="text-sky-300 text-xs truncate" x-text="hitFullName(hit)"></div>
+                        <div class="text-slate-500 text-xs truncate" x-text="hit.url"></div>
+                      </div>
+                      <div class="flex items-center gap-2 flex-shrink-0">
+                        <template x-if="hit.metadata?.confirmed_by_multiple">
+                          <span class="text-xs text-green-400 bg-green-900/30 px-2 py-0.5 rounded-full">Confirmed</span>
+                        </template>
+                        <a :href="hit.url" target="_blank" @click.stop
+                          class="text-slate-500 hover:text-sky-400 transition text-xs">↗</a>
+                        <span class="text-slate-600 text-xs transition-transform duration-200"
+                          :class="openCards[hit.platform + hit.url] ? 'rotate-180' : ''" style="display:inline-block">▾</span>
+                      </div>
                     </div>
-                    <template x-if="hit.metadata?.confirmed_by_multiple">
-                      <span class="ml-auto text-xs text-green-400 bg-green-900/30 px-2 py-0.5 rounded-full">Confirmed</span>
-                    </template>
-                  </a>
+                    <!-- Expanded metadata -->
+                    <div x-show="openCards[hit.platform + hit.url]" x-cloak
+                      class="border-t border-slate-800 px-4 pb-4 pt-3 space-y-3">
+                      <!-- ids from maigret / rich collectors -->
+                      <template x-if="hit.metadata?.ids && Object.keys(hit.metadata.ids).length">
+                        <div>
+                          <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Profile data</p>
+                          <div class="flex flex-col gap-1">
+                            <template x-for="[k, v] in Object.entries(hit.metadata.ids)" :key="k">
+                              <div class="flex gap-2 text-xs">
+                                <span class="text-slate-500 flex-shrink-0 w-32 truncate" x-text="k"></span>
+                                <span class="text-slate-200 truncate" x-text="v"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                      <!-- nametrace gender/nationality -->
+                      <template x-if="hit.metadata?.nametrace">
+                        <div>
+                          <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Name analysis</p>
+                          <div class="flex flex-col gap-1 text-xs">
+                            <template x-if="hit.metadata.nametrace.gender">
+                              <div class="flex gap-2">
+                                <span class="text-slate-500 flex-shrink-0 w-32">gender</span>
+                                <span class="text-slate-200" x-text="hit.metadata.nametrace.gender + (hit.metadata.nametrace.gender_probability ? ' (' + Math.round(hit.metadata.nametrace.gender_probability * 100) + '%)' : '')"></span>
+                              </div>
+                            </template>
+                            <template x-if="hit.metadata.nametrace.nationalities?.length">
+                              <div class="flex gap-2">
+                                <span class="text-slate-500 flex-shrink-0 w-32">nationalities</span>
+                                <span class="text-slate-200" x-text="hit.metadata.nametrace.nationalities.map(n => n.country_id + ' ' + Math.round(n.probability * 100) + '%').join(', ')"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                      <!-- socid extracted identifiers -->
+                      <template x-if="hit.metadata?.socid && Object.keys(hit.metadata.socid).length">
+                        <div>
+                          <p class="text-xs text-slate-500 uppercase tracking-wider mb-2">Extracted identifiers</p>
+                          <div class="flex flex-col gap-1">
+                            <template x-for="[k, v] in Object.entries(hit.metadata.socid)" :key="k">
+                              <div class="flex gap-2 text-xs">
+                                <span class="text-slate-500 flex-shrink-0 w-32 truncate" x-text="k"></span>
+                                <span class="text-slate-200 truncate" x-text="v"></span>
+                              </div>
+                            </template>
+                          </div>
+                        </div>
+                      </template>
+                      <!-- fallback -->
+                      <template x-if="!hit.metadata?.ids && !hit.metadata?.nametrace && !hit.metadata?.socid">
+                        <p class="text-xs text-slate-600">No additional data.</p>
+                      </template>
+                    </div>
+                  </div>
                 </template>
               </div>
             </div>

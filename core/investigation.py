@@ -30,8 +30,16 @@ async def run_investigation(investigation: Investigation, store) -> None:
         # ── Tool collectors (run in parallel) ───────────────────────────────
         await _run_collectors(investigation, store)
 
-        # ── Correlate & build graph ──────────────────────────────────────────
+        # ── Correlate (first pass — tags confirmed hits) ─────────────────────
         correlate(investigation)
+
+        # ── Socid enrichment on confirmed profile URLs only ──────────────────
+        await _enrich_with_socid(investigation, store)
+
+        # ── Nametrace enrichment on hits that expose a full name ─────────────
+        await _enrich_with_nametrace(investigation, store)
+
+        # ── Build graph ──────────────────────────────────────────────────────
         investigation.graph = build_graph(investigation)
         store.save(investigation)
         store.emit(investigation.id, SSEEvent(event="graph_ready", data={}))
@@ -168,6 +176,95 @@ def _api_result(name: str, raw: dict, hits: list[dict]):
         profile_hits=[ProfileHit(**h) for h in hits],
         raw_data={name: raw},
     )
+
+
+async def _enrich_with_socid(investigation: Investigation, store) -> None:
+    try:
+        from socid_extractor import extract as socid_extract
+        import httpx
+    except ImportError:
+        return
+
+    # Collect unique URLs from confirmed profile hits only
+    url_to_hits: dict[str, list] = {}
+    for result in investigation.results:
+        for hit in result.profile_hits:
+            if hit.url and hit.metadata.get("confirmed_by_multiple"):
+                url_to_hits.setdefault(hit.url, []).append(hit)
+
+    if not url_to_hits:
+        return
+
+    store.emit(investigation.id, SSEEvent(event="collector_started", data={"collector": "socid_enrichment"}))
+
+    async def _fetch_and_enrich(client: httpx.AsyncClient, url: str, hits: list) -> None:
+        try:
+            resp = await client.get(url, timeout=10)
+            if resp.status_code != 200:
+                return
+            extracted = socid_extract(resp.text)
+            if extracted:
+                for hit in hits:
+                    hit.metadata["socid"] = extracted
+        except Exception:
+            pass
+
+    async with httpx.AsyncClient(
+        headers={"User-Agent": "Mozilla/5.0"},
+        follow_redirects=True,
+    ) as client:
+        await asyncio.gather(*[
+            _fetch_and_enrich(client, url, hits)
+            for url, hits in url_to_hits.items()
+        ], return_exceptions=True)
+
+    store.save(investigation)
+    store.emit(investigation.id, SSEEvent(event="collector_done", data={"collector": "socid_enrichment"}))
+
+
+def _extract_fullname(hit) -> str | None:
+    m = hit.metadata
+    ids = m.get("ids") if isinstance(m.get("ids"), dict) else {}
+    socid = m.get("socid") if isinstance(m.get("socid"), dict) else {}
+    return (
+        m.get("full_name") or m.get("fullname") or m.get("global_name") or m.get("name")
+        or ids.get("fullname") or ids.get("full_name") or ids.get("name")
+        or socid.get("name")
+    ) or None
+
+
+async def _enrich_with_nametrace(investigation: Investigation, store) -> None:
+    from collectors.nametrace_collector import fetch_nametrace
+
+    name_to_hits: dict[str, list] = {}
+    for result in investigation.results:
+        for hit in result.profile_hits:
+            fullname = _extract_fullname(hit)
+            if not fullname:
+                continue
+            first_name = fullname.split()[0][:50].lower()
+            name_to_hits.setdefault(first_name, []).append(hit)
+
+    if not name_to_hits:
+        return
+
+    store.emit(investigation.id, SSEEvent(event="collector_started", data={"collector": "nametrace_enrichment"}))
+
+    async def _run(first_name: str, hits: list) -> None:
+        try:
+            data = await fetch_nametrace(first_name)
+            for hit in hits:
+                hit.metadata["nametrace"] = data
+        except Exception:
+            pass
+
+    await asyncio.gather(*[
+        _run(first_name, hits)
+        for first_name, hits in name_to_hits.items()
+    ], return_exceptions=True)
+
+    store.save(investigation)
+    store.emit(investigation.id, SSEEvent(event="collector_done", data={"collector": "nametrace_enrichment"}))
 
 
 def _emit_collector_error(investigation, store, name: str, exc: Exception) -> None:

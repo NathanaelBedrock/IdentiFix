@@ -9,6 +9,7 @@ function app() {
     submitting: false,
     collectors: [],
     form: { username: '', email: '', discord_id: '', twitter_handle: '', reddit_username: '' },
+    openCards: {},
     _sseSource: null,
     _graphNetwork: null,
     _pollTimer: null,
@@ -120,6 +121,29 @@ function app() {
       await this.loadInvestigations();
     },
 
+    hitFullName(hit) {
+      const m = hit.metadata || {};
+      return m.full_name || m.fullname || m.global_name || m.name
+        || m.ids?.fullname || m.ids?.full_name || m.ids?.name
+        || m.socid?.name || null;
+    },
+
+    toggleCard(key) {
+      this.openCards[key] = !this.openCards[key];
+    },
+
+    areAllCardsExpanded() {
+      const hits = this.profileHits();
+      return hits.length > 0 && hits.every(h => this.openCards[h.platform + h.url]);
+    },
+
+    toggleAllCards() {
+      const expand = !this.areAllCardsExpanded();
+      for (const hit of this.profileHits()) {
+        this.openCards[hit.platform + hit.url] = expand;
+      }
+    },
+
     profileHits() {
       if (!this.current) return [];
       const seen = new Set();
@@ -127,8 +151,18 @@ function app() {
       for (const result of (this.current.results || [])) {
         for (const hit of (result.profile_hits || [])) {
           if (!hit.metadata?.confirmed_by_multiple) continue;
-          const key = hit.platform + hit.url;
-          if (!seen.has(key)) { seen.add(key); hits.push(hit); }
+          const key = hit.platform.toLowerCase() + ':' + (hit.username || '').toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
+            hits.push(hit);
+          } else {
+            const existing = hits.find(h =>
+              h.platform.toLowerCase() + ':' + (h.username || '').toLowerCase() === key
+            );
+            if (existing && hit.metadata?.ids && !existing.metadata?.ids) {
+              Object.assign(existing.metadata, hit.metadata);
+            }
+          }
         }
       }
       return hits.sort((a, b) => a.platform.localeCompare(b.platform));

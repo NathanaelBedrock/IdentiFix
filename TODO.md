@@ -12,6 +12,7 @@
 - [ ] Fix maigret collector
 - [ ] Fix naminter collector
 - [ ] Create pyproject.toml
+- [ ] Use secret vault for API keys
 
 ## Completed
 

@@ -18,7 +18,7 @@ ExifRead>=3.0.0
 h8mail>=2.5.0
 
 # OSINT CLI tools (subprocess wrappers, pip-installable)
-naminter>=1.0.7
+naminter>=1.0.4
 linkook>=1.1.2
 sharetrace>=1.0.0
 

@@ -236,31 +236,36 @@ def _extract_fullname(hit) -> str | None:
 async def _enrich_with_nametrace(investigation: Investigation, store) -> None:
     from collectors.nametrace_collector import fetch_nametrace
 
-    name_to_hits: dict[str, list] = {}
+    # Deduplicate by (first_name, last_name) — one API call per unique name pair
+    name_to_hits: dict[tuple[str, str | None], list] = {}
     for result in investigation.results:
         for hit in result.profile_hits:
             fullname = _extract_fullname(hit)
             if not fullname:
                 continue
-            first_name = fullname.split()[0][:50].lower()
-            name_to_hits.setdefault(first_name, []).append(hit)
+            parts = fullname.split()
+            first_name = parts[0][:50].lower()
+            last_name = parts[-1][:50].lower() if len(parts) > 1 else None
+            name_to_hits.setdefault((first_name, last_name), []).append(hit)
 
     if not name_to_hits:
         return
 
     store.emit(investigation.id, SSEEvent(event="collector_started", data={"collector": "nametrace_enrichment"}))
 
-    async def _run(first_name: str, hits: list) -> None:
+    async def _run(first_name: str, last_name: str | None, hits: list) -> None:
         try:
-            data = await fetch_nametrace(first_name)
+            data = await fetch_nametrace(first_name, last_name)
+            if not data.get("gender") and not data.get("nationalities"):
+                return
             for hit in hits:
                 hit.metadata["nametrace"] = data
         except Exception:
             pass
 
     await asyncio.gather(*[
-        _run(first_name, hits)
-        for first_name, hits in name_to_hits.items()
+        _run(first_name, last_name, hits)
+        for (first_name, last_name), hits in name_to_hits.items()
     ], return_exceptions=True)
 
     store.save(investigation)

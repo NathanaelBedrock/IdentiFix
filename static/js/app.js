@@ -240,23 +240,34 @@ function app() {
       if (!container) return;
 
       const colorMap = {
-        person: { background: '#0ea5e9', border: '#0284c7' },
-        username: { background: '#a855f7', border: '#9333ea' },
+        person:           { background: '#0ea5e9', border: '#0284c7' },
+        username:         { background: '#a855f7', border: '#9333ea' },
+        category:         { background: '#1e293b', border: '#475569' },
         platform_profile: { background: '#22c55e', border: '#16a34a' },
-        email: { background: '#eab308', border: '#ca8a04' },
-        breach: { background: '#ef4444', border: '#dc2626' },
-        image: { background: '#f97316', border: '#ea580c' },
+        email:            { background: '#eab308', border: '#ca8a04' },
+        breach:           { background: '#ef4444', border: '#dc2626' },
+        image:            { background: '#f97316', border: '#ea580c' },
       };
 
-      const nodes = graphData.nodes.map(n => ({
-        id: n.id,
-        label: n.label.length > 20 ? n.label.slice(0, 18) + '…' : n.label,
-        title: n.label,
-        color: colorMap[n.type] || colorMap.platform_profile,
-        font: { color: '#e2e8f0', size: 12 },
-        shape: n.type === 'person' ? 'star' : 'dot',
-        size: n.type === 'person' ? 24 : 14,
-      }));
+      const nodes = graphData.nodes.map(n => {
+        const confirmations = n.metadata?.confirmation_count || 1;
+        const baseSize = n.type === 'person' ? 28
+          : n.type === 'category' ? 20
+          : n.type === 'username' ? 18
+          : 10 + Math.min(confirmations * 3, 10);
+        return {
+          id: n.id,
+          label: n.label.length > 20 ? n.label.slice(0, 18) + '…' : n.label,
+          title: n.label + (confirmations > 1 ? ` (confirmed ×${confirmations})` : ''),
+          color: colorMap[n.type] || colorMap.platform_profile,
+          font: {
+            color: n.type === 'category' ? '#94a3b8' : '#e2e8f0',
+            size: n.type === 'category' ? 11 : 12,
+          },
+          shape: n.type === 'person' ? 'star' : n.type === 'category' ? 'diamond' : 'dot',
+          size: baseSize,
+        };
+      });
 
       const edges = graphData.edges.map(e => ({
         from: e.source,

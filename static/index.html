@@ -157,8 +157,14 @@
               <template x-if="profileHits().length === 0">
                 <p class="text-slate-600 text-sm py-8 text-center">No profile hits yet.</p>
               </template>
-              <div class="flex justify-end mb-2" x-show="profileHits().length > 0">
-                <button @click="toggleAllCards()"
+              <div class="flex justify-end gap-2 mb-2">
+                <button @click="showUnconfirmed = !showUnconfirmed"
+                  class="text-xs transition px-3 py-1 rounded-lg border"
+                  :class="showUnconfirmed
+                    ? 'text-sky-400 border-sky-700 bg-sky-900/20'
+                    : 'text-slate-400 border-slate-700 hover:text-sky-400 hover:border-sky-700'"
+                  x-text="showUnconfirmed ? 'Hide unconfirmed' : 'Show unconfirmed'"></button>
+                <button @click="toggleAllCards()" x-show="profileHits().length > 0"
                   class="text-xs text-slate-400 hover:text-sky-400 transition px-3 py-1 rounded-lg border border-slate-700 hover:border-sky-700"
                   x-text="areAllCardsExpanded() ? 'Collapse all' : 'Expand all'"></button>
               </div>

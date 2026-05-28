@@ -10,9 +10,12 @@ function app() {
     collectors: [],
     form: { username: '', email: '', discord_id: '', twitter_handle: '', reddit_username: '' },
     openCards: {},
+    showUnconfirmed: false,
+    liveDuration: '-',
     _sseSource: null,
     _graphNetwork: null,
     _pollTimer: null,
+    _durationTimer: null,
 
     async init() {
       await this.loadInvestigations();
@@ -44,7 +47,9 @@ function app() {
       this.selectedId = id;
       this.activeTab = 'profiles';
       this._stopSSE();
+      this._stopDurationTimer();
       await this.loadFull(id);
+      this._startDurationTimer();
       if (this.current && !['completed', 'failed', 'cancelled'].includes(this.current.status)) {
         this._startSSE(id);
       }
@@ -66,15 +71,18 @@ function app() {
         await this.loadFull(id);
         await this.loadInvestigations();
         this._stopSSE();
+        this._startDurationTimer();
       });
       this._sseSource.addEventListener('failed', async (e) => {
         await this.loadFull(id);
         await this.loadInvestigations();
         this._stopSSE();
+        this._startDurationTimer();
       });
       this._sseSource.addEventListener('cancelled', async (e) => {
         await this.loadFull(id);
         this._stopSSE();
+        this._startDurationTimer();
       });
       this._sseSource.addEventListener('graph_ready', () => {
         this.loadFull(id);
@@ -86,6 +94,22 @@ function app() {
         this._sseSource.close();
         this._sseSource = null;
       }
+    },
+
+    _startDurationTimer() {
+      this._stopDurationTimer();
+      const toUtc = s => s && !s.endsWith('Z') ? s + 'Z' : s;
+      const tick = () => {
+        if (!this.current?.started_at) { this.liveDuration = '-'; return; }
+        const end = this.current.completed_at ? new Date(toUtc(this.current.completed_at)) : new Date();
+        this.liveDuration = Math.round((end - new Date(toUtc(this.current.started_at))) / 1000) + 's';
+      };
+      tick();
+      this._durationTimer = setInterval(tick, 1000);
+    },
+
+    _stopDurationTimer() {
+      if (this._durationTimer) { clearInterval(this._durationTimer); this._durationTimer = null; }
     },
 
     async submitInvestigation() {
@@ -162,7 +186,7 @@ function app() {
       const hits = [];
       for (const result of (this.current.results || [])) {
         for (const hit of (result.profile_hits || [])) {
-          if (!hit.metadata?.confirmed_by_multiple) continue;
+          if (!this.showUnconfirmed && !hit.metadata?.confirmed_by_multiple) continue;
           const key = hit.platform.toLowerCase() + ':' + (hit.username || '').toLowerCase();
           if (!seen.has(key)) {
             seen.add(key);
@@ -211,9 +235,7 @@ function app() {
       if (!this.current) return [];
       const s = this.current;
       const summary = s.summary || {};
-      const duration = s.completed_at && s.started_at
-        ? Math.round((new Date(s.completed_at) - new Date(s.started_at)) / 1000) + 's'
-        : '-';
+      const duration = this.liveDuration;
       return [
         ['Profile Hits', summary.profile_hits ?? 0, 'text-sky-400'],
         ['Email Registrations', summary.email_registrations ?? 0, 'text-purple-400'],

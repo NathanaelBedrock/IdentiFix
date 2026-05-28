@@ -65,7 +65,9 @@ async def get_investigation(inv_id: str):
     inv = store.get(inv_id)
     if not inv:
         raise HTTPException(status_code=404, detail="Investigation not found")
-    return inv.model_dump(mode="json")
+    data = inv.model_dump(mode="json")
+    data["summary"] = inv.summary()
+    return data
 
 
 @app.delete("/api/investigations/{inv_id}")
